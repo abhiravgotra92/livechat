@@ -61,6 +61,7 @@ function publishCall(data) {
 
 // ── Route incoming MQTT call messages ─────────────────────────────────────────
 function handleCallMsg(data) {
+  console.log('[CALL] handleCallMsg:', data?.type, 'to:', data?.to, 'myKey:', userKey);
   if (!data || !data.type) return;
   if (data.fromKey === userKey) return;          // ignore own echoes
 
@@ -115,12 +116,14 @@ async function flushCandidates() {
 
 // ── Start call ────────────────────────────────────────────────────────────────
 function startCall(withVideo) {
-  if (callState !== 'idle') return;
-  if (!userName) return;
+  console.log('[CALL] startCall triggered. callState:', callState, 'userName:', userName);
+  if (callState !== 'idle') { console.log('[CALL] blocked: not idle'); return; }
+  if (!userName) { console.log('[CALL] blocked: no userName'); return; }
 
-  // Refresh online map before checking
   updateOnlineCount();
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
+  console.log('[CALL] onlineMap:', JSON.stringify(onlineMap), 'others:', others.length);
+
   if (!others.length) {
     showSysMsg('⚠️ No one else is online to call. Wait for someone to join.');
     return;
@@ -173,6 +176,7 @@ function showUserPicker(users, withVideo) {
 
 // ── Initiate call (caller side) ───────────────────────────────────────────────
 async function initiateCall(target, withVideo) {
+  console.log('[CALL] initiateCall to:', target.name, target.key, 'video:', withVideo);
   isVideo       = withVideo;
   callTarget    = target.name;
   callTargetKey = target.key;
@@ -402,6 +406,7 @@ function playRingtone(on) {
 
 // ── Call UI ───────────────────────────────────────────────────────────────────
 function showCallUI(state) {
+  console.log('[CALL] showCallUI state:', state, 'target:', callTarget);
   callOverlay.classList.remove('hidden');
   callName.textContent = callTarget;
   callDuration.textContent = '';
