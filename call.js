@@ -5,9 +5,21 @@ const RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'turn:openrelay.metered.ca:80',              username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443',             username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    {
+      urls: [
+        'turn:relay1.expressturn.com:3478',
+        'turn:relay1.expressturn.com:3478?transport=tcp'
+      ],
+      username: 'efIFGOGCMBSBGBOFYL',
+      credential: 'KBFdFFsnzmODggAP'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
   ]
 };
 
@@ -399,11 +411,13 @@ function showCallUI(state) {
   callAvatar.textContent = icons[state] || '📞';
   callStatus.textContent = texts[state] || '';
 
-  btnAccept.style.display  = state === 'ringing' ? 'flex' : 'none';
-  btnDecline.style.display = state === 'ringing' ? 'flex' : 'none';
-  btnHangup.style.display  = state !== 'ringing' ? 'flex' : 'none';
-  btnMute.style.display    = state === 'active'  ? 'flex' : 'none';
-  btnCam.style.display     = state === 'active' && isVideo ? 'flex' : 'none';
+  const groupIncoming = document.getElementById('group-incoming');
+  const groupActive   = document.getElementById('group-active');
+  const wrapCam       = document.getElementById('wrap-cam');
+
+  if (groupIncoming) groupIncoming.style.display = state === 'ringing' ? 'flex' : 'none';
+  if (groupActive)   groupActive.style.display   = state !== 'ringing' ? 'flex' : 'none';
+  if (wrapCam)       wrapCam.style.display        = state === 'active' && isVideo ? 'flex' : 'none';
 }
 
 function hideCallUI() {
