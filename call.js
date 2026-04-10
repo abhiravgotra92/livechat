@@ -1,115 +1,113 @@
 'use strict';
 
-// ── WebRTC config — free public TURN via OpenRelay (no registration) ──────────
+// ── ICE / TURN config ─────────────────────────────────────────────────────────
 const RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    {
-      urls:       'turn:openrelay.metered.ca:80',
-      username:   'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls:       'turn:openrelay.metered.ca:443',
-      username:   'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls:       'turn:openrelay.metered.ca:443?transport=tcp',
-      username:   'openrelayproject',
-      credential: 'openrelayproject'
-    }
+    { urls: 'turn:openrelay.metered.ca:80',              username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443',             username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
   ]
 };
 
-// MQTT signal topics — separate namespace from chat
-const T_CALL   = 'livechat/public/v6/call';
+const T_CALL = 'livechat/public/v6/call';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let pc          = null;   // RTCPeerConnection
-let localStream = null;
-let callState   = 'idle'; // idle | calling | ringing | active
-let callTarget  = '';     // name of the person we're calling / being called by
-let callTargetKey = '';
-let isVideo     = false;
-let callTimer   = null;
-let callSeconds = 0;
+let pc             = null;
+let localStream    = null;
+let callState      = 'idle';   // idle | calling | ringing | active
+let callTarget     = '';
+let callTargetKey  = '';
+let isVideo        = false;
+let callTimer      = null;
+let callSeconds    = 0;
+let pendingCandidates = [];    // queue ICE candidates until remote desc is set
+let remoteDescSet  = false;
 
-// ── UI elements ───────────────────────────────────────────────────────────────
-const callOverlay   = document.getElementById('call-overlay');
-const callStatus    = document.getElementById('call-status');
-const callAvatar    = document.getElementById('call-avatar');
-const callName      = document.getElementById('call-name');
-const callDuration  = document.getElementById('call-duration');
-const btnAccept     = document.getElementById('btn-accept');
-const btnDecline    = document.getElementById('btn-decline');
-const btnHangup     = document.getElementById('btn-hangup');
-const btnMute       = document.getElementById('btn-mute');
-const btnCam        = document.getElementById('btn-cam');
-const localVideo    = document.getElementById('local-video');
-const remoteVideo   = document.getElementById('remote-video');
-const videoBox      = document.getElementById('video-box');
-const callBtn       = document.getElementById('call-btn');
-const videoCallBtn  = document.getElementById('video-call-btn');
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const callOverlay  = document.getElementById('call-overlay');
+const callStatus   = document.getElementById('call-status');
+const callAvatar   = document.getElementById('call-avatar');
+const callName     = document.getElementById('call-name');
+const callDuration = document.getElementById('call-duration');
+const btnAccept    = document.getElementById('btn-accept');
+const btnDecline   = document.getElementById('btn-decline');
+const btnHangup    = document.getElementById('btn-hangup');
+const btnMute      = document.getElementById('btn-mute');
+const btnCam       = document.getElementById('btn-cam');
+const localVideo   = document.getElementById('local-video');
+const remoteVideo  = document.getElementById('remote-video');
+const videoBox     = document.getElementById('video-box');
 
-// ── Publish via MQTT (reuses mqttClient from chat.js) ─────────────────────────
+// ── MQTT publish helper ───────────────────────────────────────────────────────
 function publishCall(data) {
   if (mqttClient && mqttClient.connected) {
     mqttClient.publish(T_CALL, JSON.stringify(data));
   }
 }
 
-// Subscribe to call topic once MQTT connects — called from chat.js after subscribe
-function subscribeCall() {
-  if (mqttClient && mqttClient.connected) {
-    mqttClient.subscribe(T_CALL);
-  }
-}
-
-// ── Handle incoming MQTT call messages ────────────────────────────────────────
+// ── Route incoming MQTT call messages ─────────────────────────────────────────
 function handleCallMsg(data) {
   if (!data || !data.type) return;
+  if (data.fromKey === userKey) return;          // ignore own echoes
 
-  // Ignore our own messages
-  if (data.fromKey === userKey) return;
+  // All messages except offer must be addressed to us
+  const addressedToMe = !data.to || data.to === userKey;
 
   switch (data.type) {
+
     case 'call-offer':
+      if (data.to !== userKey) return;           // not for us
       if (callState !== 'idle') {
-        // Busy — auto-decline
         publishCall({ type: 'call-decline', to: data.fromKey, fromKey: userKey, reason: 'busy' });
         return;
       }
       onIncomingCall(data);
       break;
+
     case 'call-answer':
-      if (data.to === userKey) onCallAnswered(data);
+      if (data.to !== userKey) return;
+      if (callState === 'calling') onCallAnswered(data);
       break;
+
     case 'call-decline':
-      if (data.to === userKey) onCallDeclined(data.reason);
+      if (data.to !== userKey) return;
+      onCallDeclined(data.reason);
       break;
+
     case 'call-hangup':
+      if (data.to !== userKey) return;
       if (callState !== 'idle') onRemoteHangup();
       break;
+
     case 'ice-candidate':
-      if (data.to === userKey && pc) {
+      if (data.to !== userKey) return;
+      if (!pc) return;
+      if (remoteDescSet) {
         pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+      } else {
+        pendingCandidates.push(data.candidate);  // queue until remote desc ready
       }
       break;
   }
 }
 
-// ── Initiate a call ───────────────────────────────────────────────────────────
-async function startCall(withVideo) {
+async function flushCandidates() {
+  remoteDescSet = true;
+  for (const c of pendingCandidates) {
+    await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+  }
+  pendingCandidates = [];
+}
+
+// ── Start call ────────────────────────────────────────────────────────────────
+function startCall(withVideo) {
   if (callState !== 'idle') return;
   if (!userName) return;
 
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
-  if (!others.length) {
-    showSysMsg('No one else is online to call.');
-    return;
-  }
+  if (!others.length) { showSysMsg('No one else is online to call.'); return; }
 
   if (others.length === 1) {
     initiateCall(others[0], withVideo);
@@ -118,60 +116,37 @@ async function startCall(withVideo) {
   }
 }
 
-// ── User picker UI ────────────────────────────────────────────────────────────
+// ── User picker ───────────────────────────────────────────────────────────────
 function showUserPicker(users, withVideo) {
-  const existing = document.getElementById('user-picker');
-  if (existing) existing.remove();
+  document.getElementById('user-picker')?.remove();
 
   const overlay = document.createElement('div');
   overlay.id = 'user-picker';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px';
 
   const box = document.createElement('div');
   box.style.cssText = 'background:var(--sur);border:1px solid var(--bdr);border-radius:20px;padding:24px;width:100%;max-width:320px;';
-
-  const title = document.createElement('div');
-  title.style.cssText = 'font-size:15px;font-weight:700;color:var(--txt);margin-bottom:4px;';
-  title.textContent = withVideo ? '📹 Start Video Call' : '📞 Start Voice Call';
-
-  const sub = document.createElement('div');
-  sub.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:16px;';
-  sub.textContent = 'Select who to call';
-
-  box.appendChild(title);
-  box.appendChild(sub);
+  box.innerHTML = `
+    <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:4px">${withVideo ? '📹 Video Call' : '📞 Voice Call'}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Select who to call</div>
+  `;
 
   users.forEach(u => {
     const btn = document.createElement('button');
-    btn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--sur2);border:1px solid var(--bdr);border-radius:12px;color:var(--txt);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;transition:background .15s;';
-    btn.onmouseover = () => btn.style.background = 'rgba(108,99,255,.2)';
-    btn.onmouseout  = () => btn.style.background = 'var(--sur2)';
-
-    const avatar = document.createElement('div');
-    avatar.style.cssText = 'width:36px;height:36px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;flex-shrink:0;';
-    avatar.textContent = u.name.charAt(0).toUpperCase();
-
-    const nameEl = document.createElement('div');
-    nameEl.textContent = u.name;
-
-    const onlineDot = document.createElement('div');
-    onlineDot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#34d399;margin-left:auto;flex-shrink:0;';
-
-    btn.appendChild(avatar);
-    btn.appendChild(nameEl);
-    btn.appendChild(onlineDot);
-
-    btn.addEventListener('click', () => {
-      overlay.remove();
-      initiateCall(u, withVideo);
-    });
+    btn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--sur2);border:1px solid var(--bdr);border-radius:12px;color:var(--txt);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;';
+    btn.innerHTML = `
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0">${u.name.charAt(0).toUpperCase()}</div>
+      <span>${u.name}</span>
+      <div style="width:8px;height:8px;border-radius:50%;background:#34d399;margin-left:auto;flex-shrink:0"></div>
+    `;
+    btn.onclick = () => { overlay.remove(); initiateCall(u, withVideo); };
     box.appendChild(btn);
   });
 
   const cancel = document.createElement('button');
   cancel.style.cssText = 'width:100%;padding:10px;background:none;border:1px solid var(--bdr);border-radius:10px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:4px;';
   cancel.textContent = 'Cancel';
-  cancel.addEventListener('click', () => overlay.remove());
+  cancel.onclick = () => overlay.remove();
   box.appendChild(cancel);
 
   overlay.appendChild(box);
@@ -179,14 +154,16 @@ function showUserPicker(users, withVideo) {
   document.body.appendChild(overlay);
 }
 
-// ── Actually initiate the call after target is chosen ─────────────────────────
+// ── Initiate call (caller side) ───────────────────────────────────────────────
 async function initiateCall(target, withVideo) {
   isVideo       = withVideo;
   callTarget    = target.name;
   callTargetKey = target.key;
   callState     = 'calling';
+  remoteDescSet = false;
+  pendingCandidates = [];
 
-  showCallUI('calling', callTarget);
+  showCallUI('calling');
 
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -195,14 +172,11 @@ async function initiateCall(target, withVideo) {
     });
   } catch (e) {
     endCall();
-    showSysMsg('Microphone access denied. Please allow mic permissions.');
+    showSysMsg('Microphone/camera access denied. Please allow permissions.');
     return;
   }
 
-  if (withVideo) {
-    localVideo.srcObject = localStream;
-    videoBox.style.display = 'flex';
-  }
+  if (withVideo) { localVideo.srcObject = localStream; videoBox.style.display = 'flex'; }
 
   pc = createPC();
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
@@ -211,32 +185,31 @@ async function initiateCall(target, withVideo) {
   await pc.setLocalDescription(offer);
 
   publishCall({
-    type:     'call-offer',
-    fromKey:  userKey,
-    fromName: userName,
-    to:       callTargetKey,
-    sdp:      offer.sdp,
-    video:    withVideo
+    type: 'call-offer', fromKey: userKey, fromName: userName,
+    to: callTargetKey, sdp: offer.sdp, video: withVideo
   });
 
+  // Auto-cancel after 30s no answer
   setTimeout(() => {
     if (callState === 'calling') {
-      publishCall({ type: 'call-hangup', fromKey: userKey });
+      publishCall({ type: 'call-hangup', fromKey: userKey, to: callTargetKey });
       endCall();
       showSysMsg(`${callTarget} didn't answer.`);
     }
   }, 30000);
 }
+
+// ── Incoming call (callee side) ───────────────────────────────────────────────
 function onIncomingCall(data) {
   callState     = 'ringing';
   callTarget    = data.fromName;
   callTargetKey = data.fromKey;
   isVideo       = data.video;
-
-  // Store offer SDP for when we accept
+  remoteDescSet = false;
+  pendingCandidates = [];
   window._pendingOffer = data;
 
-  showCallUI('ringing', callTarget);
+  showCallUI('ringing');
   playRingtone(true);
 }
 
@@ -246,7 +219,7 @@ async function acceptCall() {
 
   const data = window._pendingOffer;
   callState = 'active';
-  showCallUI('active', callTarget);
+  showCallUI('active');
 
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -255,29 +228,22 @@ async function acceptCall() {
     });
   } catch (e) {
     endCall();
-    showSysMsg('Microphone access denied.');
+    showSysMsg('Microphone/camera access denied.');
     return;
   }
 
-  if (isVideo) {
-    localVideo.srcObject = localStream;
-    videoBox.style.display = 'flex';
-  }
+  if (isVideo) { localVideo.srcObject = localStream; videoBox.style.display = 'flex'; }
 
   pc = createPC();
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
   await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.sdp }));
+  await flushCandidates();
+
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
-  publishCall({
-    type:    'call-answer',
-    fromKey: userKey,
-    to:      callTargetKey,
-    sdp:     answer.sdp
-  });
-
+  publishCall({ type: 'call-answer', fromKey: userKey, to: callTargetKey, sdp: answer.sdp });
   startCallTimer();
 }
 
@@ -287,31 +253,29 @@ function declineCall() {
   endCall();
 }
 
-// ── Call answered (caller side) ───────────────────────────────────────────────
+// ── Caller receives answer ────────────────────────────────────────────────────
 async function onCallAnswered(data) {
-  if (callState !== 'calling') return;
   callState = 'active';
-  showCallUI('active', callTarget);
+  showCallUI('active');
   await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: data.sdp }));
+  await flushCandidates();
   startCallTimer();
 }
 
-// ── Call declined ─────────────────────────────────────────────────────────────
+// ── Call ended by remote ──────────────────────────────────────────────────────
 function onCallDeclined(reason) {
-  const msg = reason === 'busy' ? `${callTarget} is busy.` : `${callTarget} declined the call.`;
-  showSysMsg(msg);
+  showSysMsg(reason === 'busy' ? `${callTarget} is busy.` : `${callTarget} declined the call.`);
   endCall();
 }
 
-// ── Remote hung up ────────────────────────────────────────────────────────────
 function onRemoteHangup() {
   showSysMsg(`${callTarget} ended the call.`);
   endCall();
 }
 
-// ── Hang up ───────────────────────────────────────────────────────────────────
+// ── Local hang up ─────────────────────────────────────────────────────────────
 function hangup() {
-  publishCall({ type: 'call-hangup', fromKey: userKey });
+  publishCall({ type: 'call-hangup', fromKey: userKey, to: callTargetKey });
   endCall();
 }
 
@@ -319,6 +283,8 @@ function endCall() {
   playRingtone(false);
   clearInterval(callTimer);
   callSeconds = 0;
+  remoteDescSet = false;
+  pendingCandidates = [];
 
   if (pc) { pc.close(); pc = null; }
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
@@ -326,12 +292,8 @@ function endCall() {
   localVideo.srcObject  = null;
   remoteVideo.srcObject = null;
   videoBox.style.display = 'none';
-
-  callState     = 'idle';
-  callTarget    = '';
-  callTargetKey = '';
+  callState = 'idle'; callTarget = ''; callTargetKey = '';
   window._pendingOffer = null;
-
   hideCallUI();
 }
 
@@ -340,25 +302,20 @@ function createPC() {
   const conn = new RTCPeerConnection(RTC_CONFIG);
 
   conn.onicecandidate = e => {
-    if (e.candidate) {
-      publishCall({
-        type:      'ice-candidate',
-        fromKey:   userKey,
-        to:        callTargetKey,
-        candidate: e.candidate.toJSON()
-      });
+    if (e.candidate && callTargetKey) {
+      publishCall({ type: 'ice-candidate', fromKey: userKey, to: callTargetKey, candidate: e.candidate.toJSON() });
     }
   };
 
   conn.ontrack = e => {
     remoteVideo.srcObject = e.streams[0];
-    if (!isVideo) {
-      // Audio only — hide video box but keep audio playing
-      videoBox.style.display = 'none';
-    }
+    if (!isVideo) videoBox.style.display = 'none';
   };
 
   conn.onconnectionstatechange = () => {
+    if (conn.connectionState === 'connected') {
+      callStatus.textContent = `On call with ${callTarget}`;
+    }
     if (conn.connectionState === 'failed' || conn.connectionState === 'disconnected') {
       showSysMsg('Call connection lost.');
       endCall();
@@ -368,14 +325,14 @@ function createPC() {
   return conn;
 }
 
-// ── Mute / camera toggle ──────────────────────────────────────────────────────
+// ── Controls ──────────────────────────────────────────────────────────────────
 function toggleMute() {
   if (!localStream) return;
   const track = localStream.getAudioTracks()[0];
   if (!track) return;
   track.enabled = !track.enabled;
   btnMute.textContent = track.enabled ? '🎤' : '🔇';
-  btnMute.title       = track.enabled ? 'Mute' : 'Unmute';
+  btnMute.title = track.enabled ? 'Mute' : 'Unmute';
 }
 
 function toggleCam() {
@@ -386,7 +343,7 @@ function toggleCam() {
   btnCam.textContent = track.enabled ? '📷' : '📷🚫';
 }
 
-// ── Call timer ────────────────────────────────────────────────────────────────
+// ── Timer ─────────────────────────────────────────────────────────────────────
 function startCallTimer() {
   callSeconds = 0;
   clearInterval(callTimer);
@@ -398,53 +355,55 @@ function startCallTimer() {
   }, 1000);
 }
 
-// ── Ringtone (Web Audio API — no file needed) ─────────────────────────────────
+// ── Ringtone via Web Audio ────────────────────────────────────────────────────
 let ringtoneCtx = null;
-let ringtoneOsc = null;
+let ringtoneInterval = null;
 
 function playRingtone(on) {
   if (!on) {
-    if (ringtoneOsc) { try { ringtoneOsc.stop(); } catch(_) {} ringtoneOsc = null; }
-    if (ringtoneCtx) { ringtoneCtx.close(); ringtoneCtx = null; }
+    clearInterval(ringtoneInterval);
+    ringtoneInterval = null;
+    if (ringtoneCtx) { ringtoneCtx.close().catch(() => {}); ringtoneCtx = null; }
     return;
   }
   try {
     ringtoneCtx = new (window.AudioContext || window.webkitAudioContext)();
-    function beep() {
+    const beep = () => {
       if (!ringtoneCtx) return;
-      const osc  = ringtoneCtx.createOscillator();
+      const osc = ringtoneCtx.createOscillator();
       const gain = ringtoneCtx.createGain();
       osc.connect(gain); gain.connect(ringtoneCtx.destination);
-      osc.frequency.value = 480;
-      gain.gain.setValueAtTime(0.3, ringtoneCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ringtoneCtx.currentTime + 0.4);
-      osc.start(); osc.stop(ringtoneCtx.currentTime + 0.4);
-      ringtoneOsc = osc;
-    }
+      osc.frequency.value = 440;
+      gain.gain.setValueAtTime(0.4, ringtoneCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ringtoneCtx.currentTime + 0.5);
+      osc.start(); osc.stop(ringtoneCtx.currentTime + 0.5);
+    };
     beep();
-    const interval = setInterval(() => {
-      if (!ringtoneCtx) { clearInterval(interval); return; }
-      beep();
-    }, 1500);
-  } catch(_) {}
+    ringtoneInterval = setInterval(beep, 1500);
+  } catch (_) {}
 }
 
 // ── Call UI ───────────────────────────────────────────────────────────────────
-function showCallUI(state, name) {
+function showCallUI(state) {
   callOverlay.classList.remove('hidden');
-  callName.textContent = name;
+  callName.textContent = callTarget;
   callDuration.textContent = '';
+
+  const icons = { calling: '📞', ringing: '📲', active: '🔊' };
+  const texts = {
+    calling: `Calling ${callTarget}...`,
+    ringing: `${callTarget} is calling you`,
+    active:  `On call with ${callTarget}`
+  };
+
+  callAvatar.textContent = icons[state] || '📞';
+  callStatus.textContent = texts[state] || '';
 
   btnAccept.style.display  = state === 'ringing' ? 'flex' : 'none';
   btnDecline.style.display = state === 'ringing' ? 'flex' : 'none';
   btnHangup.style.display  = state !== 'ringing' ? 'flex' : 'none';
   btnMute.style.display    = state === 'active'  ? 'flex' : 'none';
   btnCam.style.display     = state === 'active' && isVideo ? 'flex' : 'none';
-
-  const icons = { calling: '📞', ringing: '📲', active: '🔊' };
-  const texts = { calling: `Calling ${name}...`, ringing: `${name} is calling...`, active: `On call with ${name}` };
-  callAvatar.textContent  = icons[state];
-  callStatus.textContent  = texts[state];
 }
 
 function hideCallUI() {
@@ -452,11 +411,11 @@ function hideCallUI() {
   callDuration.textContent = '';
 }
 
-// ── Wire up buttons ───────────────────────────────────────────────────────────
+// ── Button wiring ─────────────────────────────────────────────────────────────
 btnAccept.addEventListener('click', acceptCall);
 btnDecline.addEventListener('click', declineCall);
 btnHangup.addEventListener('click', hangup);
 btnMute.addEventListener('click', toggleMute);
 btnCam.addEventListener('click', toggleCam);
-callBtn.addEventListener('click', () => startCall(false));
-videoCallBtn.addEventListener('click', () => startCall(true));
+document.getElementById('call-btn').addEventListener('click', () => startCall(false));
+document.getElementById('video-call-btn').addEventListener('click', () => startCall(true));
