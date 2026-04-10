@@ -105,29 +105,86 @@ async function startCall(withVideo) {
   if (callState !== 'idle') return;
   if (!userName) return;
 
-  // Pick a target from online users (excluding self)
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
   if (!others.length) {
     showSysMsg('No one else is online to call.');
     return;
   }
 
-  // If multiple users, show picker — otherwise call the only one
-  let target;
   if (others.length === 1) {
-    target = others[0];
+    initiateCall(others[0], withVideo);
   } else {
-    const names = others.map((u, i) => `${i + 1}. ${u.name}`).join('\n');
-    const choice = prompt(`Who do you want to call?\n\n${names}\n\nEnter number:`);
-    const idx = parseInt(choice) - 1;
-    if (isNaN(idx) || !others[idx]) return;
-    target = others[idx];
+    showUserPicker(others, withVideo);
   }
+}
 
-  isVideo      = withVideo;
-  callTarget   = target.name;
+// ── User picker UI ────────────────────────────────────────────────────────────
+function showUserPicker(users, withVideo) {
+  const existing = document.getElementById('user-picker');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'user-picker';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--sur);border:1px solid var(--bdr);border-radius:20px;padding:24px;width:100%;max-width:320px;';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:15px;font-weight:700;color:var(--txt);margin-bottom:4px;';
+  title.textContent = withVideo ? '📹 Start Video Call' : '📞 Start Voice Call';
+
+  const sub = document.createElement('div');
+  sub.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:16px;';
+  sub.textContent = 'Select who to call';
+
+  box.appendChild(title);
+  box.appendChild(sub);
+
+  users.forEach(u => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--sur2);border:1px solid var(--bdr);border-radius:12px;color:var(--txt);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;transition:background .15s;';
+    btn.onmouseover = () => btn.style.background = 'rgba(108,99,255,.2)';
+    btn.onmouseout  = () => btn.style.background = 'var(--sur2)';
+
+    const avatar = document.createElement('div');
+    avatar.style.cssText = 'width:36px;height:36px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;flex-shrink:0;';
+    avatar.textContent = u.name.charAt(0).toUpperCase();
+
+    const nameEl = document.createElement('div');
+    nameEl.textContent = u.name;
+
+    const onlineDot = document.createElement('div');
+    onlineDot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#34d399;margin-left:auto;flex-shrink:0;';
+
+    btn.appendChild(avatar);
+    btn.appendChild(nameEl);
+    btn.appendChild(onlineDot);
+
+    btn.addEventListener('click', () => {
+      overlay.remove();
+      initiateCall(u, withVideo);
+    });
+    box.appendChild(btn);
+  });
+
+  const cancel = document.createElement('button');
+  cancel.style.cssText = 'width:100%;padding:10px;background:none;border:1px solid var(--bdr);border-radius:10px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:4px;';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => overlay.remove());
+  box.appendChild(cancel);
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ── Actually initiate the call after target is chosen ─────────────────────────
+async function initiateCall(target, withVideo) {
+  isVideo       = withVideo;
+  callTarget    = target.name;
   callTargetKey = target.key;
-  callState    = 'calling';
+  callState     = 'calling';
 
   showCallUI('calling', callTarget);
 
@@ -162,7 +219,6 @@ async function startCall(withVideo) {
     video:    withVideo
   });
 
-  // Auto-cancel if no answer in 30s
   setTimeout(() => {
     if (callState === 'calling') {
       publishCall({ type: 'call-hangup', fromKey: userKey });
@@ -171,8 +227,6 @@ async function startCall(withVideo) {
     }
   }, 30000);
 }
-
-// ── Incoming call ─────────────────────────────────────────────────────────────
 function onIncomingCall(data) {
   callState     = 'ringing';
   callTarget    = data.fromName;
