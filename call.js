@@ -73,7 +73,7 @@ function handleCallMsg(data) {
     case 'call-offer':
       if (data.to !== userKey) return;           // not for us
       if (callState !== 'idle') {
-        publishCall({ type: 'call-decline', to: data.fromKey, fromKey: userKey, reason: 'busy' });
+        publishCall({ type: 'call-decline', to: data.fromKey, fromKey: userKey, fromName: userName, reason: 'busy' });
         return;
       }
       onIncomingCall(data);
@@ -116,16 +116,24 @@ async function flushCandidates() {
 
 // ── Start call ────────────────────────────────────────────────────────────────
 function startCall(withVideo) {
-  console.log('[CALL] startCall triggered. callState:', callState, 'userName:', userName);
-  if (callState !== 'idle') { console.log('[CALL] blocked: not idle'); return; }
-  if (!userName) { console.log('[CALL] blocked: no userName'); return; }
+  console.log('[CALL] startCall. callState:', callState, 'userName:', userName, 'onlineMap:', JSON.stringify(onlineMap));
+  if (callState !== 'idle') return;
+  if (!userName) return;
 
   updateOnlineCount();
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
-  console.log('[CALL] onlineMap:', JSON.stringify(onlineMap), 'others:', others.length);
 
   if (!others.length) {
-    showSysMsg('⚠️ No one else is online to call. Wait for someone to join.');
+    // Fallback: ask for name manually if presence map is empty
+    const targetName = prompt('Enter the exact name of the person to call:');
+    if (!targetName || !targetName.trim()) return;
+    // Search case-insensitively
+    const match = Object.values(onlineMap).find(u => u.name.toLowerCase() === targetName.trim().toLowerCase() && u.key !== userKey);
+    if (match) {
+      initiateCall(match, withVideo);
+    } else {
+      showSysMsg('⚠️ "' + targetName.trim() + '" is not online. Make sure they have the chat open.');
+    }
     return;
   }
 

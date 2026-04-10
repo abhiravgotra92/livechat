@@ -345,7 +345,7 @@ refBtn.addEventListener('click', () => {
 // ── Presence / online count ───────────────────────────────────────────────────
 function handlePresence(data) {
   if (!data || !data.key) return;
-  if (!data.ts || nowMs() - data.ts > 90000) {
+  if (!data.ts || nowMs() - data.ts > 35000) {
     delete onlineMap[data.key];
   } else {
     onlineMap[data.key] = { name: data.name, key: data.key, ts: data.ts };
@@ -354,9 +354,8 @@ function handlePresence(data) {
 }
 
 function updateOnlineCount() {
-  // Prune stale (no heartbeat in 90s)
   Object.keys(onlineMap).forEach(k => {
-    if (nowMs() - onlineMap[k].ts > 90000) delete onlineMap[k];
+    if (nowMs() - onlineMap[k].ts > 35000) delete onlineMap[k];
   });
   // Self is always online — count others from map + 1 for self
   const others = Object.keys(onlineMap).filter(k => k !== userKey).length;
