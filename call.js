@@ -61,23 +61,24 @@ function publishCall(data) {
 
 // ── Route incoming MQTT call messages ─────────────────────────────────────────
 function handleCallMsg(data) {
-  console.log('[CALL] handleCallMsg:', data?.type, 'to:', data?.to, 'myKey:', userKey);
   if (!data || !data.type) return;
   if (data.fromKey === userKey) return;          // ignore own echoes
 
-  // All messages except offer must be addressed to us
-  const addressedToMe = !data.to || data.to === userKey;
-
   switch (data.type) {
 
-    case 'call-offer':
-      if (data.to !== userKey) return;           // not for us
+    case 'call-offer': {
+      // Match by key OR by name (fallback for when key is unknown)
+      const forMe = data.to === userKey || 
+                    (!data.to && data.toName && data.toName.toLowerCase() === userName.toLowerCase());
+      if (!forMe) return;
       if (callState !== 'idle') {
         publishCall({ type: 'call-decline', to: data.fromKey, fromKey: userKey, fromName: userName, reason: 'busy' });
         return;
       }
+      // Store caller's key so we can reply correctly
       onIncomingCall(data);
       break;
+    }
 
     case 'call-answer':
       if (data.to !== userKey) return;
@@ -90,7 +91,7 @@ function handleCallMsg(data) {
       break;
 
     case 'call-hangup':
-      if (data.to !== userKey) return;
+      if (data.to !== userKey && !(data.toName && data.toName.toLowerCase() === userName.toLowerCase())) return;
       if (callState !== 'idle') onRemoteHangup();
       break;
 
@@ -100,7 +101,7 @@ function handleCallMsg(data) {
       if (remoteDescSet) {
         pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
       } else {
-        pendingCandidates.push(data.candidate);  // queue until remote desc ready
+        pendingCandidates.push(data.candidate);
       }
       break;
   }
@@ -116,7 +117,6 @@ async function flushCandidates() {
 
 // ── Start call ────────────────────────────────────────────────────────────────
 function startCall(withVideo) {
-  console.log('[CALL] startCall. callState:', callState, 'userName:', userName, 'onlineMap:', JSON.stringify(onlineMap));
   if (callState !== 'idle') return;
   if (!userName) return;
 
@@ -124,16 +124,10 @@ function startCall(withVideo) {
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
 
   if (!others.length) {
-    // Fallback: ask for name manually if presence map is empty
-    const targetName = prompt('Enter the exact name of the person to call:');
+    // Fallback: broadcast by name — ask caller who to call
+    const targetName = prompt('Enter the name of the person to call:');
     if (!targetName || !targetName.trim()) return;
-    // Search case-insensitively
-    const match = Object.values(onlineMap).find(u => u.name.toLowerCase() === targetName.trim().toLowerCase() && u.key !== userKey);
-    if (match) {
-      initiateCall(match, withVideo);
-    } else {
-      showSysMsg('⚠️ "' + targetName.trim() + '" is not online. Make sure they have the chat open.');
-    }
+    initiateCallByName(targetName.trim(), withVideo);
     return;
   }
 
@@ -142,6 +136,51 @@ function startCall(withVideo) {
   } else {
     showUserPicker(others, withVideo);
   }
+}
+
+// ── Initiate call by name (when key is unknown) ───────────────────────────────
+async function initiateCallByName(targetName, withVideo) {
+  isVideo       = withVideo;
+  callTarget    = targetName;
+  callTargetKey = '';           // unknown — callee will match by toName
+  callState     = 'calling';
+  remoteDescSet = false;
+  pendingCandidates = [];
+
+  showCallUI('calling');
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: withVideo ? { width: 640, height: 480 } : false
+    });
+  } catch (e) {
+    endCall();
+    showSysMsg('Microphone/camera access denied. Please allow permissions.');
+    return;
+  }
+
+  if (withVideo) { localVideo.srcObject = localStream; videoBox.style.display = 'flex'; }
+
+  pc = createPC();
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  // Broadcast with toName so callee matches by name, not key
+  publishCall({
+    type: 'call-offer', fromKey: userKey, fromName: userName,
+    toName: targetName, sdp: offer.sdp, video: withVideo
+  });
+
+  setTimeout(() => {
+    if (callState === 'calling') {
+      publishCall({ type: 'call-hangup', fromKey: userKey, toName: callTarget });
+      endCall();
+      showSysMsg(`${callTarget} didn't answer.`);
+    }
+  }, 30000);
 }
 
 // ── User picker ───────────────────────────────────────────────────────────────
@@ -184,7 +223,6 @@ function showUserPicker(users, withVideo) {
 
 // ── Initiate call (caller side) ───────────────────────────────────────────────
 async function initiateCall(target, withVideo) {
-  console.log('[CALL] initiateCall to:', target.name, target.key, 'video:', withVideo);
   isVideo       = withVideo;
   callTarget    = target.name;
   callTargetKey = target.key;
@@ -232,7 +270,7 @@ async function initiateCall(target, withVideo) {
 function onIncomingCall(data) {
   callState     = 'ringing';
   callTarget    = data.fromName;
-  callTargetKey = data.fromKey;
+  callTargetKey = data.fromKey;  // always set from offer
   isVideo       = data.video;
   remoteDescSet = false;
   pendingCandidates = [];
@@ -414,7 +452,6 @@ function playRingtone(on) {
 
 // ── Call UI ───────────────────────────────────────────────────────────────────
 function showCallUI(state) {
-  console.log('[CALL] showCallUI state:', state, 'target:', callTarget);
   callOverlay.classList.remove('hidden');
   callName.textContent = callTarget;
   callDuration.textContent = '';
