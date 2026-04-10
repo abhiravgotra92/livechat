@@ -7,6 +7,7 @@ const T_MSG   = TOPIC + 'msg';
 const T_CLEAR = TOPIC + 'clear';
 const T_TYPE  = TOPIC + 'typing';
 const T_PRES  = TOPIC + 'presence';
+const T_CALL  = 'livechat/public/v6/call';
 const CHAT_PASSWORD = 'artest';
 const LS_HIST = 'lc_history_v6';
 const LS_EPOCH= 'lc_epoch_v6';
@@ -156,7 +157,7 @@ function connectMQTT() {
 
     mqttClient.on('connect', () => {
       setDot(true);
-      mqttClient.subscribe([T_MSG, T_CLEAR, T_TYPE, T_PRES], err => {
+      mqttClient.subscribe([T_MSG, T_CLEAR, T_TYPE, T_PRES, T_CALL], err => {
         if (!err) {
           publish(T_MSG,  { type: 'system', text: userName + ' joined the chat', ts: nowMs() });
           // Broadcast presence immediately so others update their count
@@ -192,6 +193,7 @@ function connectMQTT() {
         if (topic === T_CLEAR) handleClear(data);
         if (topic === T_TYPE)  handleTyping(data);
         if (topic === T_PRES)  handlePresence(data);
+        if (topic === T_CALL)  { if (typeof handleCallMsg === 'function') handleCallMsg(data); }
       } catch (_) {}
     });
   }
@@ -346,7 +348,7 @@ function handlePresence(data) {
   if (!data.ts || nowMs() - data.ts > 90000) {
     delete onlineMap[data.key];
   } else {
-    onlineMap[data.key] = { name: data.name, ts: data.ts };
+    onlineMap[data.key] = { name: data.name, key: data.key, ts: data.ts };
   }
   updateOnlineCount();
 }

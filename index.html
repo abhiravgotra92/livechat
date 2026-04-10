@@ -29,9 +29,11 @@
       </div>
       <div class="header-right">
         <span id="online-badge">🟢 <span id="online-num">1</span> online</span>
-        <button id="refresh-btn" title="Auto-refresh ON">🔄</button>
-        <button id="clear-btn"   title="Clear history">🗑️</button>
-        <button id="leave-btn"   title="Leave">✕</button>
+        <button id="call-btn"       title="Voice call">📞</button>
+        <button id="video-call-btn" title="Video call">📹</button>
+        <button id="refresh-btn"    title="Auto-refresh ON">🔄</button>
+        <button id="clear-btn"      title="Clear history">🗑️</button>
+        <button id="leave-btn"      title="Leave">✕</button>
       </div>
     </header>
 
@@ -54,8 +56,30 @@
     </div>
   </div>
 
+  <!-- Call overlay -->
+  <div id="call-overlay" class="hidden">
+    <div class="call-box">
+      <div id="call-avatar" class="call-avatar">📞</div>
+      <div id="call-name" class="call-name"></div>
+      <div id="call-status" class="call-status"></div>
+      <div id="call-duration" class="call-duration"></div>
+      <div id="video-box" class="video-box" style="display:none">
+        <video id="remote-video" autoplay playsinline></video>
+        <video id="local-video"  autoplay playsinline muted class="local-video"></video>
+      </div>
+      <div class="call-actions">
+        <button id="btn-accept"  class="call-action-btn accept"  title="Accept">✅</button>
+        <button id="btn-decline" class="call-action-btn decline" title="Decline">❌</button>
+        <button id="btn-hangup"  class="call-action-btn hangup"  title="Hang up" style="display:none">📵</button>
+        <button id="btn-mute"    class="call-action-btn mute"    title="Mute"    style="display:none">🎤</button>
+        <button id="btn-cam"     class="call-action-btn cam"     title="Camera"  style="display:none">📷</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MQTT.js via CDN — no registration needed -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="chat.js"></script>
+  <script src="call.js"></script>
 </body>
 </html>
