@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiveChat</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="join-screen">
+    <div class="join-box">
+      <div class="logo">💬</div>
+      <h1>LiveChat</h1>
+      <p>Enter your name and password to join.</p>
+      <input id="name-input" type="text" placeholder="Your name..." maxlength="24" autocomplete="off" />
+      <input id="pass-input" type="password" placeholder="Password..." autocomplete="off" />
+      <button id="join-btn">Join Chat</button>
+      <span id="join-error"></span>
+    </div>
+  </div>
+
+  <div id="chat-screen" class="hidden">
+    <header>
+      <div class="header-left">
+        <span>💬</span>
+        <span class="room-name">LiveChat</span>
+        <span id="conn-dot" class="dot-offline" title="Connecting..."></span>
+      </div>
+      <div class="header-right">
+        <span id="online-badge">🟢 <span id="online-num">1</span> online</span>
+        <button id="refresh-btn" title="Auto-refresh ON">🔄</button>
+        <button id="clear-btn"   title="Clear history">🗑️</button>
+        <button id="leave-btn"   title="Leave">✕</button>
+      </div>
+    </header>
+
+    <div id="messages"></div>
+    <div id="typing-bar"></div>
+
+    <form id="msg-form">
+      <input id="msg-input" type="text" placeholder="Type a message..." maxlength="500" autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <div id="modal" class="hidden">
+    <div class="modal-box">
+      <p>🗑️ Clear all chat history for everyone?</p>
+      <div class="modal-btns">
+        <button id="modal-yes">Yes, clear</button>
+        <button id="modal-no">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MQTT.js via CDN — no registration needed -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>

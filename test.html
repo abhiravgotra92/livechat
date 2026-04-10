@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LiveChat — 2-User Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #111; font-family: sans-serif; color: #fff; }
+    h2 { text-align: center; padding: 12px; background: #1a1a2e; font-size: 14px; color: #a78bfa; }
+    .frames { display: flex; height: calc(100vh - 40px); }
+    iframe { flex: 1; border: none; border-right: 2px solid #333; }
+    iframe:last-child { border-right: none; }
+    .label { position: absolute; background: rgba(108,99,255,.8); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 4px; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <h2>🧪 Two-User Test — Open both frames, enter different names, and chat between them</h2>
+  <div class="frames">
+    <iframe src="index.html" title="User 1"></iframe>
+    <iframe src="index.html" title="User 2"></iframe>
+  </div>
+</body>
+</html>
