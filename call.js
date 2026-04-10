@@ -118,8 +118,13 @@ function startCall(withVideo) {
   if (callState !== 'idle') return;
   if (!userName) return;
 
+  // Refresh online map before checking
+  updateOnlineCount();
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
-  if (!others.length) { showSysMsg('No one else is online to call.'); return; }
+  if (!others.length) {
+    showSysMsg('⚠️ No one else is online to call. Wait for someone to join.');
+    return;
+  }
 
   if (others.length === 1) {
     initiateCall(others[0], withVideo);

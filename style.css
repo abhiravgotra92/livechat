@@ -148,6 +148,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
 /* Action buttons row */
 .call-actions{display:flex;gap:18px;justify-content:center;flex-wrap:wrap}
+.call-action-group{display:flex;gap:18px;justify-content:center;flex-wrap:wrap}
+.call-action-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
 
 .call-action-btn{
   width:60px;height:60px;border-radius:50%;border:none;
