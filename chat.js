@@ -271,10 +271,25 @@ function renderMsg(msg, animate) {
     const isMe = msg.name === userName;
     const row  = document.createElement('div');
     row.className = 'row ' + (isMe ? 'me' : 'them') + (animate ? ' pop' : '');
-    row.innerHTML =
-      (!isMe ? '<div class="who" style="color:' + msg.color + '">' + esc(msg.name) + '</div>' : '') +
-      '<div class="bubble">' + esc(msg.text) + '</div>' +
-      '<div class="ts">' + fmtTime(msg.ts) + '</div>';
+
+    if (!isMe) {
+      const who = document.createElement('div');
+      who.className = 'who';
+      who.style.color = /^#[0-9a-fA-F]{6}$/.test(msg.color) ? msg.color : '#888899';
+      who.textContent = msg.name;
+      row.appendChild(who);
+    }
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = msg.text;
+    row.appendChild(bubble);
+
+    const ts = document.createElement('div');
+    ts.className = 'ts';
+    ts.textContent = fmtTime(msg.ts);
+    row.appendChild(ts);
+
     msgsEl.appendChild(row);
   }
   msgsEl.scrollTop = msgsEl.scrollHeight;

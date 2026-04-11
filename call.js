@@ -143,25 +143,48 @@ function showNamePrompt(withVideo) {
   overlay.id = 'name-prompt';
   overlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:400;width:100%;max-width:300px;padding:0 16px';
 
-  overlay.innerHTML = `
-    <div style="background:linear-gradient(160deg,#1a1a2e,#16213e);border:1px solid rgba(108,99,255,.3);border-radius:20px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.7);text-align:center">
-      <div style="font-size:28px;margin-bottom:8px">${withVideo ? '📹' : '📞'}</div>
-      <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px">${withVideo ? 'Video Call' : 'Voice Call'}</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px">Enter the name of the person to call</div>
-      <input id="call-name-input" type="text" placeholder="Their name..." autocomplete="off"
-        style="width:100%;padding:10px 14px;background:rgba(255,255,255,.07);border:1px solid rgba(108,99,255,.3);border-radius:10px;color:#fff;font-size:14px;outline:none;margin-bottom:12px;text-align:center" />
-      <div style="display:flex;gap:8px">
-        <button id="call-name-cancel" style="flex:1;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:rgba(255,255,255,.5);font-size:13px;cursor:pointer">Cancel</button>
-        <button id="call-name-go" style="flex:1;padding:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Call</button>
-      </div>
-    </div>
-  `;
+  const card = document.createElement('div');
+  card.style.cssText = 'background:linear-gradient(160deg,#1a1a2e,#16213e);border:1px solid rgba(108,99,255,.3);border-radius:20px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.7);text-align:center';
 
+  const icon = document.createElement('div');
+  icon.style.cssText = 'font-size:28px;margin-bottom:8px';
+  icon.textContent = withVideo ? '📹' : '📞';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:15px;font-weight:700;color:#fff;margin-bottom:4px';
+  title.textContent = withVideo ? 'Video Call' : 'Voice Call';
+
+  const sub = document.createElement('div');
+  sub.style.cssText = 'font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px';
+  sub.textContent = 'Enter the name of the person to call';
+
+  const input = document.createElement('input');
+  input.id = 'call-name-input';
+  input.type = 'text';
+  input.placeholder = 'Their name...';
+  input.autocomplete = 'off';
+  input.style.cssText = 'width:100%;padding:10px 14px;background:rgba(255,255,255,.07);border:1px solid rgba(108,99,255,.3);border-radius:10px;color:#fff;font-size:14px;outline:none;margin-bottom:12px;text-align:center';
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.style.cssText = 'flex:1;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:rgba(255,255,255,.5);font-size:13px;cursor:pointer';
+  cancelBtn.textContent = 'Cancel';
+
+  const goBtn = document.createElement('button');
+  goBtn.style.cssText = 'flex:1;padding:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer';
+  goBtn.textContent = 'Call';
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(goBtn);
+  card.appendChild(icon);
+  card.appendChild(title);
+  card.appendChild(sub);
+  card.appendChild(input);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
   document.body.appendChild(overlay);
-
-  const input  = document.getElementById('call-name-input');
-  const goBtn  = document.getElementById('call-name-go');
-  const cancel = document.getElementById('call-name-cancel');
 
   input.focus();
 
@@ -174,7 +197,7 @@ function showNamePrompt(withVideo) {
 
   goBtn.addEventListener('click', doCall);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') doCall(); });
-  cancel.addEventListener('click', () => overlay.remove());
+  cancelBtn.addEventListener('click', () => overlay.remove());
 }
 
 // ── User picker ───────────────────────────────────────────────────────────────
@@ -195,11 +218,20 @@ function showUserPicker(users, withVideo) {
   users.forEach(u => {
     const btn = document.createElement('button');
     btn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--sur2);border:1px solid var(--bdr);border-radius:12px;color:var(--txt);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;';
-    btn.innerHTML = `
-      <div style="width:36px;height:36px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0">${u.name.charAt(0).toUpperCase()}</div>
-      <span>${u.name}</span>
-      <div style="width:8px;height:8px;border-radius:50%;background:#34d399;margin-left:auto;flex-shrink:0"></div>
-    `;
+
+    const avatar = document.createElement('div');
+    avatar.style.cssText = 'width:36px;height:36px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0';
+    avatar.textContent = u.name.charAt(0).toUpperCase();
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = u.name;
+
+    const dot = document.createElement('div');
+    dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#34d399;margin-left:auto;flex-shrink:0';
+
+    btn.appendChild(avatar);
+    btn.appendChild(nameSpan);
+    btn.appendChild(dot);
     btn.onclick = () => { overlay.remove(); initiateCall(u, withVideo); };
     box.appendChild(btn);
   });
