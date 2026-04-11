@@ -26,16 +26,16 @@ const RTC_CONFIG = {
 const T_CALL = 'livechat/public/v6/call';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let pc             = null;
-let localStream    = null;
-let callState      = 'idle';   // idle | calling | ringing | active
-let callTarget     = '';
-let callTargetKey  = '';
-let isVideo        = false;
-let callTimer      = null;
-let callSeconds    = 0;
-let pendingCandidates = [];    // queue ICE candidates until remote desc is set
-let remoteDescSet  = false;
+let pc                = null;
+let localStream       = null;
+let callState         = 'idle';   // idle | calling | ringing | active
+let callTarget        = '';       // display name of other party
+let callTargetKey     = '';       // userKey of other party
+let isVideo           = false;
+let callTimer         = null;
+let callSeconds       = 0;
+let pendingCandidates = [];
+let remoteDescSet     = false;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const callOverlay  = document.getElementById('call-overlay');
@@ -52,51 +52,53 @@ const localVideo   = document.getElementById('local-video');
 const remoteVideo  = document.getElementById('remote-video');
 const videoBox     = document.getElementById('video-box');
 
-// ── MQTT publish helper ───────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function publishCall(data) {
   if (mqttClient && mqttClient.connected) {
     mqttClient.publish(T_CALL, JSON.stringify(data));
   }
 }
 
+// Check if a message is addressed to me — by key OR by name
+function isForMe(data) {
+  if (data.to && data.to === userKey) return true;
+  if (data.toName && data.toName.toLowerCase() === userName.toLowerCase()) return true;
+  return false;
+}
+
 // ── Route incoming MQTT call messages ─────────────────────────────────────────
 function handleCallMsg(data) {
   if (!data || !data.type) return;
-  if (data.fromKey === userKey) return;          // ignore own echoes
+  if (data.fromKey === userKey) return;   // ignore own echoes
 
   switch (data.type) {
 
-    case 'call-offer': {
-      // Match by key OR by name (fallback for when key is unknown)
-      const forMe = data.to === userKey || 
-                    (!data.to && data.toName && data.toName.toLowerCase() === userName.toLowerCase());
-      if (!forMe) return;
+    case 'call-offer':
+      if (!isForMe(data)) return;
       if (callState !== 'idle') {
-        publishCall({ type: 'call-decline', to: data.fromKey, fromKey: userKey, fromName: userName, reason: 'busy' });
+        publishCall({ type: 'call-decline', to: data.fromKey, toName: data.fromName, fromKey: userKey, fromName: userName, reason: 'busy' });
         return;
       }
-      // Store caller's key so we can reply correctly
       onIncomingCall(data);
       break;
-    }
 
     case 'call-answer':
-      if (data.to !== userKey) return;
+      if (!isForMe(data)) return;
       if (callState === 'calling') onCallAnswered(data);
       break;
 
     case 'call-decline':
-      if (data.to !== userKey) return;
+      if (!isForMe(data)) return;
       onCallDeclined(data.reason);
       break;
 
     case 'call-hangup':
-      if (data.to !== userKey && !(data.toName && data.toName.toLowerCase() === userName.toLowerCase())) return;
+      if (!isForMe(data)) return;
       if (callState !== 'idle') onRemoteHangup();
       break;
 
     case 'ice-candidate':
-      if (data.to !== userKey) return;
+      if (!isForMe(data)) return;
       if (!pc) return;
       if (remoteDescSet) {
         pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
@@ -124,10 +126,10 @@ function startCall(withVideo) {
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
 
   if (!others.length) {
-    // Fallback: broadcast by name — ask caller who to call
     const targetName = prompt('Enter the name of the person to call:');
     if (!targetName || !targetName.trim()) return;
-    initiateCallByName(targetName.trim(), withVideo);
+    // Build a synthetic target — key unknown, name only
+    initiateCall({ name: targetName.trim(), key: '' }, withVideo);
     return;
   }
 
@@ -136,51 +138,6 @@ function startCall(withVideo) {
   } else {
     showUserPicker(others, withVideo);
   }
-}
-
-// ── Initiate call by name (when key is unknown) ───────────────────────────────
-async function initiateCallByName(targetName, withVideo) {
-  isVideo       = withVideo;
-  callTarget    = targetName;
-  callTargetKey = '';           // unknown — callee will match by toName
-  callState     = 'calling';
-  remoteDescSet = false;
-  pendingCandidates = [];
-
-  showCallUI('calling');
-
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: withVideo ? { width: 640, height: 480 } : false
-    });
-  } catch (e) {
-    endCall();
-    showSysMsg('Microphone/camera access denied. Please allow permissions.');
-    return;
-  }
-
-  if (withVideo) { localVideo.srcObject = localStream; videoBox.style.display = 'flex'; }
-
-  pc = createPC();
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  // Broadcast with toName so callee matches by name, not key
-  publishCall({
-    type: 'call-offer', fromKey: userKey, fromName: userName,
-    toName: targetName, sdp: offer.sdp, video: withVideo
-  });
-
-  setTimeout(() => {
-    if (callState === 'calling') {
-      publishCall({ type: 'call-hangup', fromKey: userKey, toName: callTarget });
-      endCall();
-      showSysMsg(`${callTarget} didn't answer.`);
-    }
-  }, 30000);
 }
 
 // ── User picker ───────────────────────────────────────────────────────────────
@@ -225,7 +182,7 @@ function showUserPicker(users, withVideo) {
 async function initiateCall(target, withVideo) {
   isVideo       = withVideo;
   callTarget    = target.name;
-  callTargetKey = target.key;
+  callTargetKey = target.key || '';
   callState     = 'calling';
   remoteDescSet = false;
   pendingCandidates = [];
@@ -251,15 +208,17 @@ async function initiateCall(target, withVideo) {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
+  // Always send both to (key) and toName so callee can match either way
   publishCall({
-    type: 'call-offer', fromKey: userKey, fromName: userName,
-    to: callTargetKey, sdp: offer.sdp, video: withVideo
+    type: 'call-offer',
+    fromKey: userKey, fromName: userName,
+    to: callTargetKey, toName: callTarget,
+    sdp: offer.sdp, video: withVideo
   });
 
-  // Auto-cancel after 30s no answer
   setTimeout(() => {
     if (callState === 'calling') {
-      publishCall({ type: 'call-hangup', fromKey: userKey, to: callTargetKey });
+      publishCall({ type: 'call-hangup', fromKey: userKey, fromName: userName, to: callTargetKey, toName: callTarget });
       endCall();
       showSysMsg(`${callTarget} didn't answer.`);
     }
@@ -270,7 +229,7 @@ async function initiateCall(target, withVideo) {
 function onIncomingCall(data) {
   callState     = 'ringing';
   callTarget    = data.fromName;
-  callTargetKey = data.fromKey;  // always set from offer
+  callTargetKey = data.fromKey;
   isVideo       = data.video;
   remoteDescSet = false;
   pendingCandidates = [];
@@ -310,18 +269,26 @@ async function acceptCall() {
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
-  publishCall({ type: 'call-answer', fromKey: userKey, to: callTargetKey, sdp: answer.sdp });
+  // Reply with both to (key) and toName so caller can match either way
+  publishCall({
+    type: 'call-answer',
+    fromKey: userKey, fromName: userName,
+    to: callTargetKey, toName: callTarget,
+    sdp: answer.sdp
+  });
   startCallTimer();
 }
 
 function declineCall() {
   playRingtone(false);
-  publishCall({ type: 'call-decline', to: callTargetKey, fromKey: userKey, reason: 'declined' });
+  publishCall({ type: 'call-decline', to: callTargetKey, toName: callTarget, fromKey: userKey, fromName: userName, reason: 'declined' });
   endCall();
 }
 
 // ── Caller receives answer ────────────────────────────────────────────────────
 async function onCallAnswered(data) {
+  // Update callTargetKey in case we called by name and now have the key
+  if (data.fromKey) callTargetKey = data.fromKey;
   callState = 'active';
   showCallUI('active');
   await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: data.sdp }));
@@ -342,7 +309,7 @@ function onRemoteHangup() {
 
 // ── Local hang up ─────────────────────────────────────────────────────────────
 function hangup() {
-  publishCall({ type: 'call-hangup', fromKey: userKey, to: callTargetKey });
+  publishCall({ type: 'call-hangup', fromKey: userKey, fromName: userName, to: callTargetKey, toName: callTarget });
   endCall();
 }
 
@@ -369,8 +336,13 @@ function createPC() {
   const conn = new RTCPeerConnection(RTC_CONFIG);
 
   conn.onicecandidate = e => {
-    if (e.candidate && callTargetKey) {
-      publishCall({ type: 'ice-candidate', fromKey: userKey, to: callTargetKey, candidate: e.candidate.toJSON() });
+    if (e.candidate && (callTargetKey || callTarget)) {
+      publishCall({
+        type: 'ice-candidate',
+        fromKey: userKey, fromName: userName,
+        to: callTargetKey, toName: callTarget,
+        candidate: e.candidate.toJSON()
+      });
     }
   };
 
@@ -437,7 +409,7 @@ function playRingtone(on) {
     ringtoneCtx = new (window.AudioContext || window.webkitAudioContext)();
     const beep = () => {
       if (!ringtoneCtx) return;
-      const osc = ringtoneCtx.createOscillator();
+      const osc  = ringtoneCtx.createOscillator();
       const gain = ringtoneCtx.createGain();
       osc.connect(gain); gain.connect(ringtoneCtx.destination);
       osc.frequency.value = 440;
@@ -453,7 +425,7 @@ function playRingtone(on) {
 // ── Call UI ───────────────────────────────────────────────────────────────────
 function showCallUI(state) {
   callOverlay.classList.remove('hidden');
-  callName.textContent = callTarget;
+  callName.textContent    = callTarget;
   callDuration.textContent = '';
 
   const icons = { calling: '📞', ringing: '📲', active: '🔊' };
