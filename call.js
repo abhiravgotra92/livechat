@@ -4,6 +4,7 @@
 let peer         = null;
 let activeCall   = null;
 let localStream  = null;
+let remoteStream = null;  // store so we can re-attach after card rebuild
 let callState    = 'idle';
 let callTarget   = '';
 let callTargetId = '';
@@ -40,7 +41,7 @@ function initCallButtons() {
     showCallCard('ringing');
     playRingtone(true);
 
-    incoming.on('stream', s => attachRemote(s));
+    incoming.on('stream', s => { remoteStream = s; attachRemote(s); });
     incoming.on('close',  () => { if (callState !== 'idle') { showSysMsg(callTarget + ' ended the call.'); endCall(); } });
     incoming.on('error',  () => endCall());
   });
@@ -117,7 +118,7 @@ async function initiateCall(targetId, targetName, withVideo) {
   activeCall = peer.call(targetId, localStream, { metadata: { name: userName, video: withVideo } });
   if (!activeCall) { endCall(); showSysMsg('⚠️ Could not reach ' + targetName + '.'); return; }
 
-  activeCall.on('stream', s => { callState = 'active'; showCallCard('active'); startCallTimer(); attachRemote(s); });
+  activeCall.on('stream', s => { remoteStream = s; callState = 'active'; showCallCard('active'); startCallTimer(); attachRemote(s); });
   activeCall.on('close',  () => { if (callState !== 'idle') { showSysMsg(callTarget + ' ended the call.'); endCall(); } });
   activeCall.on('error',  () => endCall());
 
@@ -131,9 +132,13 @@ async function acceptCall() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo ? { width:640, height:480 } : false });
   } catch(e) { endCall(); showSysMsg('⚠️ Microphone/camera access denied.'); return; }
-  attachLocal(localStream, isVideo);
+
   activeCall.answer(localStream);
-  callState = 'active'; showCallCard('active'); startCallTimer();
+  callState = 'active';
+  showCallCard('active');  // rebuild card — video elements now exist
+  startCallTimer();
+  attachLocal(localStream, isVideo);
+  if (remoteStream) attachRemote(remoteStream);  // re-attach if stream already arrived
 }
 
 function declineCall() { playRingtone(false); if (activeCall) activeCall.close(); endCall(); }
@@ -142,6 +147,9 @@ function hangup()      { if (activeCall) activeCall.close(); endCall(); }
 function endCall() {
   playRingtone(false); clearInterval(callTimer); callSeconds = 0;
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  remoteStream = null;
+  const ra = document.getElementById('call-remote-audio');
+  if (ra) ra.remove();
   activeCall = null; callState = 'idle'; callTarget = ''; callTargetId = '';
   removeCard();
 }
@@ -157,8 +165,25 @@ function attachLocal(stream, withVideo) {
 function attachRemote(stream) {
   const rv = document.getElementById('call-remote-video');
   const vw = document.getElementById('call-video-wrap');
-  if (rv) rv.srcObject = stream;
+  if (rv) {
+    rv.srcObject = stream;
+    rv.play().catch(() => {});
+  }
   if (vw && isVideo) vw.style.display = 'block';
+
+  // For voice calls, ensure audio plays via a hidden audio element
+  if (!isVideo) {
+    let audio = document.getElementById('call-remote-audio');
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.id = 'call-remote-audio';
+      audio.autoplay = true;
+      audio.style.display = 'none';
+      document.body.appendChild(audio);
+    }
+    audio.srcObject = stream;
+    audio.play().catch(() => {});
+  }
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────
@@ -267,7 +292,8 @@ function showCallCard(state) {
   }
 
   document.body.appendChild(card);
-  if (state === 'active' && localStream) attachLocal(localStream, isVideo);
+  if (state === 'active' && localStream)  attachLocal(localStream, isVideo);
+  if (state === 'active' && remoteStream) attachRemote(remoteStream);
 }
 
 function actionBtn(icon, label, bg, id, fn) {
