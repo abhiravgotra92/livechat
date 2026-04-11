@@ -94,6 +94,9 @@ function doJoin() {
 
   // Connect MQTT
   connectMQTT();
+
+  // Wire call buttons now that userName is set
+  if (typeof initCallButtons === 'function') initCallButtons();
 }
 
 // ── Leave ─────────────────────────────────────────────────────────────────────

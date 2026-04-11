@@ -27,10 +27,12 @@ body{background:var(--bg);color:var(--txt);font-family:var(--f);height:100dvh;di
 .hidden{display:none!important}
 
 /* ── Header ── */
-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--sur);border-bottom:1px solid var(--bdr);flex-shrink:0;gap:8px}
-.header-left{display:flex;align-items:center;gap:8px;font-size:20px}
-.room-name{font-weight:700;font-size:16px}
-.header-right{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;justify-content:flex-end}
+header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--sur);border-bottom:1px solid var(--bdr);flex-shrink:0;gap:8px}
+.header-left{display:flex;align-items:center;gap:8px;font-size:20px;flex:1}
+.logo-icon{font-size:22px}
+.room-name{font-weight:700;font-size:16px;color:var(--txt)}
+.header-center{display:flex;align-items:center;justify-content:center;flex:1}
+.header-right{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;justify-content:flex-end;flex:1}
 
 /* ── Header icon buttons ── */
 .hbtn{
@@ -44,12 +46,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .hbtn-divider{width:1px;height:20px;background:var(--bdr);margin:0 3px;flex-shrink:0}
 
 /* Voice call — green glow */
-#call-btn{background:rgba(52,211,153,.1);color:#34d399;border-color:rgba(52,211,153,.3)}
-#call-btn:hover{background:rgba(52,211,153,.22);border-color:rgba(52,211,153,.6);box-shadow:0 0 14px rgba(52,211,153,.4);color:#34d399}
+.call-voice{background:rgba(52,211,153,.12);color:#34d399;border-color:rgba(52,211,153,.4);width:38px;height:38px;font-size:16px}
+.call-voice:hover{background:rgba(52,211,153,.25);border-color:rgba(52,211,153,.7);box-shadow:0 0 16px rgba(52,211,153,.5)}
 
 /* Video call — purple glow */
-#video-call-btn{background:rgba(129,140,248,.1);color:#818cf8;border-color:rgba(129,140,248,.3)}
-#video-call-btn:hover{background:rgba(129,140,248,.22);border-color:rgba(129,140,248,.6);box-shadow:0 0 14px rgba(129,140,248,.4);color:#818cf8}
+.call-video{background:rgba(129,140,248,.12);color:#818cf8;border-color:rgba(129,140,248,.4);width:38px;height:38px;font-size:16px}
+.call-video:hover{background:rgba(129,140,248,.25);border-color:rgba(129,140,248,.7);box-shadow:0 0 16px rgba(129,140,248,.5)}
 
 /* Refresh */
 #refresh-btn:hover{background:rgba(108,99,255,.18);color:var(--acc2);border-color:rgba(108,99,255,.4)}
