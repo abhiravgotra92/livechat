@@ -42,8 +42,8 @@ const localVideo   = document.getElementById('local-video');
 const remoteVideo  = document.getElementById('remote-video');
 const videoBox     = document.getElementById('video-box');
 
-// ── Called from chat.js after user successfully joins ─────────────────────────
-function initCallButtons() {
+// ── Button wiring — done at page load, guarded inside handlers ───────────────
+document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('call-btn').addEventListener('click',       () => startCall(false));
   document.getElementById('video-call-btn').addEventListener('click', () => startCall(true));
   document.getElementById('btn-accept').addEventListener('click',  acceptCall);
@@ -51,7 +51,10 @@ function initCallButtons() {
   document.getElementById('btn-hangup').addEventListener('click',  hangup);
   document.getElementById('btn-mute').addEventListener('click',    toggleMute);
   document.getElementById('btn-cam').addEventListener('click',     toggleCam);
-}
+});
+
+// Keep initCallButtons as no-op so chat.js call doesn't error
+function initCallButtons() {}
 
 // ── MQTT helpers ──────────────────────────────────────────────────────────────
 function publishCall(data) {
@@ -118,6 +121,7 @@ async function flushCandidates() {
 
 // ── Start call ────────────────────────────────────────────────────────────────
 function startCall(withVideo) {
+  if (!userName) { showSysMsg('Please join the chat first.'); return; }
   if (callState !== 'idle') return;
 
   updateOnlineCount();
@@ -144,7 +148,7 @@ function showNamePrompt(withVideo) {
   overlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:400;width:100%;max-width:300px;padding:0 16px';
 
   const card = document.createElement('div');
-  card.style.cssText = 'background:linear-gradient(160deg,#1a1a2e,#16213e);border:1px solid rgba(108,99,255,.3);border-radius:20px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.7);text-align:center';
+  card.style.cssText = 'background:linear-gradient(160deg,#1a1a2e,#16213e);border:1px solid rgba(108,99,255,.3);border-radius:20px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.8);text-align:center';
 
   const icon = document.createElement('div');
   icon.style.cssText = 'font-size:28px;margin-bottom:8px';
@@ -155,25 +159,24 @@ function showNamePrompt(withVideo) {
   title.textContent = withVideo ? 'Video Call' : 'Voice Call';
 
   const sub = document.createElement('div');
-  sub.style.cssText = 'font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px';
+  sub.style.cssText = 'font-size:12px;color:rgba(255,255,255,.45);margin-bottom:16px';
   sub.textContent = 'Enter the name of the person to call';
 
   const input = document.createElement('input');
-  input.id = 'call-name-input';
   input.type = 'text';
   input.placeholder = 'Their name...';
   input.autocomplete = 'off';
-  input.style.cssText = 'width:100%;padding:10px 14px;background:rgba(255,255,255,.07);border:1px solid rgba(108,99,255,.3);border-radius:10px;color:#fff;font-size:14px;outline:none;margin-bottom:12px;text-align:center';
+  input.style.cssText = 'width:100%;padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(108,99,255,.4);border-radius:10px;color:#fff;font-size:16px;outline:none;margin-bottom:12px;text-align:center;display:block';
 
   const btnRow = document.createElement('div');
   btnRow.style.cssText = 'display:flex;gap:8px';
 
   const cancelBtn = document.createElement('button');
-  cancelBtn.style.cssText = 'flex:1;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:rgba(255,255,255,.5);font-size:13px;cursor:pointer';
+  cancelBtn.style.cssText = 'flex:1;padding:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:10px;color:rgba(255,255,255,.6);font-size:14px;cursor:pointer;min-height:44px';
   cancelBtn.textContent = 'Cancel';
 
   const goBtn = document.createElement('button');
-  goBtn.style.cssText = 'flex:1;padding:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer';
+  goBtn.style.cssText = 'flex:1;padding:12px;background:linear-gradient(135deg,#6c63ff,#a78bfa);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;min-height:44px';
   goBtn.textContent = 'Call';
 
   btnRow.appendChild(cancelBtn);
@@ -209,18 +212,25 @@ function showUserPicker(users, withVideo) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px';
 
   const box = document.createElement('div');
-  box.style.cssText = 'background:var(--sur);border:1px solid var(--bdr);border-radius:20px;padding:24px;width:100%;max-width:320px;';
-  box.innerHTML = `
-    <div style="font-size:15px;font-weight:700;color:var(--txt);margin-bottom:4px">${withVideo ? '📹 Video Call' : '📞 Voice Call'}</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Select who to call</div>
-  `;
+  box.style.cssText = 'background:#1a1a24;border:1px solid #2a2a3a;border-radius:20px;padding:24px;width:100%;max-width:320px;';
+
+  const boxTitle = document.createElement('div');
+  boxTitle.style.cssText = 'font-size:15px;font-weight:700;color:#e8e8f0;margin-bottom:4px';
+  boxTitle.textContent = withVideo ? '📹 Video Call' : '📞 Voice Call';
+
+  const boxSub = document.createElement('div');
+  boxSub.style.cssText = 'font-size:12px;color:#888899;margin-bottom:16px';
+  boxSub.textContent = 'Select who to call';
+
+  box.appendChild(boxTitle);
+  box.appendChild(boxSub);
 
   users.forEach(u => {
     const btn = document.createElement('button');
-    btn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--sur2);border:1px solid var(--bdr);border-radius:12px;color:var(--txt);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;';
+    btn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;background:#22222f;border:1px solid #2a2a3a;border-radius:12px;color:#e8e8f0;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;min-height:44px';
 
     const avatar = document.createElement('div');
-    avatar.style.cssText = 'width:36px;height:36px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0';
+    avatar.style.cssText = 'width:36px;height:36px;border-radius:50%;background:#6c63ff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0';
     avatar.textContent = u.name.charAt(0).toUpperCase();
 
     const nameSpan = document.createElement('span');
@@ -237,7 +247,7 @@ function showUserPicker(users, withVideo) {
   });
 
   const cancel = document.createElement('button');
-  cancel.style.cssText = 'width:100%;padding:10px;background:none;border:1px solid var(--bdr);border-radius:10px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:4px;';
+  cancel.style.cssText = 'width:100%;padding:12px;background:none;border:1px solid #2a2a3a;border-radius:10px;color:#888899;font-size:13px;cursor:pointer;margin-top:4px;min-height:44px';
   cancel.textContent = 'Cancel';
   cancel.onclick = () => overlay.remove();
   box.appendChild(cancel);
