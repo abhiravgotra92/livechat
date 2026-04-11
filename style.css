@@ -108,22 +108,31 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #modal-yes{background:var(--red);color:#fff}
 #modal-no{background:var(--sur2);color:var(--txt);border:1px solid var(--bdr)}
 
-/* ── Call overlay ── */
+/* ── Call overlay — mini floating card ── */
 #call-overlay{
-  position:fixed;inset:0;
-  background:rgba(0,0,0,.9);
-  backdrop-filter:blur(20px);
-  display:flex;align-items:center;justify-content:center;
-  z-index:200;padding:20px;
+  position:fixed;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  z-index:200;
+  width:100%;
+  max-width:320px;
+  padding:0 16px;
+  pointer-events:none;
 }
+#call-overlay:not(.hidden){ pointer-events:all; }
 .call-box{
   background:linear-gradient(160deg,#1a1a2e 0%,#16213e 100%);
-  border:1px solid rgba(255,255,255,.07);
-  border-radius:28px;
-  padding:36px 28px 28px;
-  width:100%;max-width:340px;
+  border:1px solid rgba(108,99,255,.3);
+  border-radius:24px;
+  padding:28px 24px 24px;
+  width:100%;
   text-align:center;
-  box-shadow:0 40px 100px rgba(0,0,0,.8);
+  box-shadow:0 8px 40px rgba(0,0,0,.7), 0 0 0 1px rgba(108,99,255,.15);
+  animation:callPop .2s ease;
+}
+@keyframes callPop{
+  from{opacity:0;transform:scale(.92)}
+  to{opacity:1;transform:scale(1)}
 }
 
 /* Pulsing avatar circle */
@@ -152,6 +161,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .call-actions{display:flex;gap:18px;justify-content:center;flex-wrap:wrap}
 .call-action-group{display:flex;gap:18px;justify-content:center;flex-wrap:wrap}
 .call-action-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.call-action-label{font-size:11px;color:rgba(255,255,255,.4)}
+
+/* Animated calling dots */
+.call-dots{display:flex;justify-content:center;gap:6px;margin-bottom:20px}
+.call-dots span{width:7px;height:7px;border-radius:50%;background:var(--acc2);animation:dotBounce 1.2s infinite ease-in-out}
+.call-dots span:nth-child(2){animation-delay:.2s}
+.call-dots span:nth-child(3){animation-delay:.4s}
+@keyframes dotBounce{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1);opacity:1}}
 
 .call-action-btn{
   width:60px;height:60px;border-radius:50%;border:none;
