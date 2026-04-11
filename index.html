@@ -66,50 +66,6 @@
     </div>
   </div>
 
-  <!-- ── Call overlay ── -->
-  <div id="call-overlay" class="hidden">
-    <div class="call-box">
-
-      <div id="video-box" class="video-box" style="display:none">
-        <video id="remote-video" autoplay playsinline></video>
-        <video id="local-video"  autoplay playsinline muted class="local-video"></video>
-      </div>
-
-      <div id="call-avatar" class="call-avatar">📞</div>
-      <div id="call-name"     class="call-name"></div>
-      <div id="call-status"   class="call-status"></div>
-      <div id="call-duration" class="call-duration"></div>
-
-      <div class="call-actions">
-        <div class="call-action-group" id="group-incoming">
-          <div class="call-action-wrap">
-            <button id="btn-decline" class="call-action-btn decline" title="Decline">📵</button>
-            <span class="call-action-label">Decline</span>
-          </div>
-          <div class="call-action-wrap">
-            <button id="btn-accept" class="call-action-btn accept" title="Accept">📞</button>
-            <span class="call-action-label">Accept</span>
-          </div>
-        </div>
-        <div class="call-action-group" id="group-active" style="display:none">
-          <div class="call-action-wrap">
-            <button id="btn-mute" class="call-action-btn mute" title="Mute">🎤</button>
-            <span class="call-action-label">Mute</span>
-          </div>
-          <div class="call-action-wrap" id="wrap-cam" style="display:none">
-            <button id="btn-cam" class="call-action-btn cam" title="Camera">📷</button>
-            <span class="call-action-label">Camera</span>
-          </div>
-          <div class="call-action-wrap">
-            <button id="btn-hangup" class="call-action-btn hangup" title="Hang up">📵</button>
-            <span class="call-action-label">End</span>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="chat.js"></script>
   <script src="call.js"></script>
