@@ -55,9 +55,8 @@ function startCall(withVideo) {
   updateOnlineCount();
   const others = Object.values(onlineMap).filter(u => u.key !== userKey);
 
-  if (!others.length)       showPickerCard(withVideo, []);
-  else if (others.length === 1) initiateCall(others[0].key, others[0].name, withVideo);
-  else                      showPickerCard(withVideo, others);
+  // Always show picker — never auto-call even if only 1 person online
+  showPickerCard(withVideo, others);
 }
 
 // ── Picker card ───────────────────────────────────────────────────────────────
