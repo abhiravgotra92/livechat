@@ -106,11 +106,8 @@ async function initiateCall(targetId, targetName, withVideo) {
   isVideo = withVideo; callTarget = targetName; callTargetId = targetId; callState = 'calling';
   showCallCard('calling');
 
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo ? { width:640, height:480 } : false });
-  } catch(e) {
-    endCall(); showSysMsg('⚠️ Microphone/camera access denied.'); return;
-  }
+  localStream = await getMedia(withVideo);
+  if (!localStream) { endCall(); return; }
 
   attachLocal(localStream, withVideo);
 
@@ -128,9 +125,8 @@ async function initiateCall(targetId, targetName, withVideo) {
 async function acceptCall() {
   if (!activeCall || callState !== 'ringing') return;
   playRingtone(false);
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo ? { width:640, height:480 } : false });
-  } catch(e) { endCall(); showSysMsg('⚠️ Microphone/camera access denied.'); return; }
+  localStream = await getMedia(isVideo);
+  if (!localStream) { endCall(); return; }
 
   activeCall.answer(localStream);
   callState = 'active';
@@ -153,7 +149,53 @@ function endCall() {
   removeCard();
 }
 
-// ── Stream helpers ────────────────────────────────────────────────────────────
+// ── Get user media with iOS/Android fixes ────────────────────────────────────
+async function getMedia(withVideo) {
+  // iOS Safari requires a user gesture and specific constraints
+  const constraints = {
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl:  true
+    },
+    video: withVideo ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } : false
+  };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // iOS: resume AudioContext if suspended (required after user gesture)
+    if (ringtoneCtx && ringtoneCtx.state === 'suspended') {
+      await ringtoneCtx.resume().catch(() => {});
+    }
+    return stream;
+  } catch (e) {
+    const msg = e.name === 'NotAllowedError'  ? 'Permission denied. Please allow mic' + (withVideo ? '/camera' : '') + ' access in your browser settings.' :
+                e.name === 'NotFoundError'    ? 'No microphone' + (withVideo ? '/camera' : '') + ' found on this device.' :
+                e.name === 'NotReadableError' ? 'Mic/camera is already in use by another app.' :
+                'Could not access mic/camera: ' + e.message;
+    showSysMsg('⚠️ ' + msg);
+    return null;
+  }
+}
+
+// ── Speaker routing fix for iOS ───────────────────────────────────────────────
+function fixIOSSpeaker(audioEl) {
+  // On iOS, audio defaults to earpiece — force loudspeaker
+  if (audioEl && typeof audioEl.setSinkId === 'function') {
+    audioEl.setSinkId('default').catch(() => {});
+  }
+  // iOS WebKit workaround: play a silent buffer to unlock audio
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    ctx.close();
+  } catch (_) {}
+}
+
 function attachLocal(stream, withVideo) {
   const lv = document.getElementById('call-local-video');
   const vw = document.getElementById('call-video-wrap');
@@ -182,6 +224,7 @@ function attachRemote(stream) {
     }
     audio.srcObject = stream;
     audio.play().catch(() => {});
+    fixIOSSpeaker(audio);
   }
 }
 
