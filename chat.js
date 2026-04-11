@@ -8,7 +8,14 @@ const T_CLEAR = TOPIC + 'clear';
 const T_TYPE  = TOPIC + 'typing';
 const T_PRES  = TOPIC + 'presence';
 const T_CALL  = 'livechat/public/v6/call';
-const CHAT_PASSWORD = 'artest';
+// Password stored as SHA-256 hash — never plaintext in source
+const CHAT_PASSWORD_HASH = '4d68bc471f657066ddad85f249217345888f3d99bca05c08177884de5da65887';
+
+async function checkPassword(input) {
+  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  return hash === CHAT_PASSWORD_HASH;
+}
 const LS_HIST = 'lc_history_v6';
 const LS_EPOCH= 'lc_epoch_v6';
 const MAX_HIST= 500;  // keep more history
@@ -70,13 +77,15 @@ nameInp.addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
 passInp.addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
 joinBtn.addEventListener('click', doJoin);
 
-function doJoin() {
+async function doJoin() {
   const n = nameInp.value.trim();
   const p = passInp.value;
   if (!n)           { joinErr.textContent = 'Please enter your name.'; return; }
   if (n.length < 2) { joinErr.textContent = 'Name must be at least 2 characters.'; return; }
   if (!p)           { joinErr.textContent = 'Please enter the password.'; return; }
-  if (p !== CHAT_PASSWORD) { joinErr.textContent = 'Incorrect password.'; passInp.value = ''; passInp.focus(); return; }
+
+  const ok = await checkPassword(p);
+  if (!ok) { joinErr.textContent = 'Incorrect password.'; passInp.value = ''; passInp.focus(); return; }
   joinErr.textContent = '';
 
   userName  = esc(n);
